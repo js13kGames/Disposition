@@ -1,0 +1,1586 @@
+<html>
+
+<style>
+html,body {
+    background-color: #202020;
+    text-align: center;
+    padding-top: 20px;
+    cursor: default;
+    overflow: hidden;
+        color: #cfcfcf;
+    text-shadow: 1px 1px 1px #2C2B3D;
+}
+a {
+    text-decoration: none;
+    color: #8080ff;
+}
+#z {
+    position: absolute;
+    left:0px;
+    top: 0px;
+    z-index: 0;
+    box-shadow: 1px 2px 12px 2px #000000;
+}
+#y {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    z-index: 1;
+    pointer-events: none;
+}
+#hpbar {
+    position: relative;
+    left: 5px;
+    top: 5px;
+    width: 180px;
+    height: 20px;
+    background-color: #af5050;
+    box-shadow: 1px 2px 6px 1px #402020;
+}
+#portalbar {
+    position: relative;
+    left: 5px;
+    top: 20px;
+    width: 180px;
+    height: 20px;
+    background-color: #50af50;
+    box-shadow: 1px 2px 6px 1px #204020;
+}
+#score {
+    position: relative;
+    left: 180px;
+    top: -35px;
+    padding: 10px;
+    display: inline-block;
+    background-color: rgba(20,20,20,0.5);
+}
+#gameover {
+    position: relative;
+    left: 0px;
+    top: 0px;
+    width: 640px;
+    height: 480px;
+    display: none;
+}
+</style>
+
+<body>
+
+
+<script type="glsl" id="a">
+
+
+    precision mediump float;
+    
+    //shaders compressed with shader minifier 
+    //shader_minifier shader --format none --preserve-externals
+
+
+    //game map frag shader
+
+    varying vec2 uv;
+    uniform vec4 other;
+    
+
+    float dirtNoise() {
+       vec2 fuv = floor(uv*vec2(320.,200.));
+       vec2 cosuv = cos(fuv*.3242 + cos(fuv*32.234)*fract(fuv.yx*4.345)*8.32454);
+       return (cosuv.x+cosuv.y);
+    }
+
+    #define EPSILON .01
+    #define cmpDist(i) if (db < d+EPSILON) {d = db; id = i;}
+    #define colconv .39215
+
+
+    vec3 DIRT_COLOR = vec3(1.25, .87, .45);
+    vec3 GRASS_COLOR = vec3(0., 1.27, .14)*1.5;
+    vec3 SAND_COLOR = vec3(2.19,2.11,1.09)*.7;
+
+
+    void main(void) {
+        
+        float td = uv.y + ( cos(.64 + uv.x*.0634)*3.0 +cos(.466+uv.x*.03723)*1.4 + cos(.23 + uv.x*.01452 * cos(.51 + uv.x*.03377))*.3 + cos(uv.x*.64523)*.05 + cos(uv.x*4.253)*.02 );
+        float tsd = abs(uv.y + ( (cos(uv.x*.1831))*2. + cos(uv.x*.62523)*.05 + cos(uv.x*4.153)*.02 ) + 0. )-.4;
+
+        float d = max(0.,max(-tsd,td));
+        int id = 0;
+
+
+        const vec2 BLOCK_REPEAT = vec2(3.);
+        
+        vec2 fuv = floor(uv/BLOCK_REPEAT);
+        vec2 ruv = mod(abs(min(uv,vec2(999999.,0.))),BLOCK_REPEAT)-BLOCK_REPEAT/2.;
+        
+        vec2 a = cos(fuv.yx+cos(fuv.xy*2.345)), b = sin(fuv.yx);
+        vec2 pa = ruv - a, ba = b - a;
+        float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
+        float db = length( pa - ba*h ) - .025;
+        cmpDist(1);
+
+        if (d > EPSILON) {
+            if (tsd < EPSILON && td < EPSILON) {
+                //dirt background
+                gl_FragColor = vec4( DIRT_COLOR*(colconv-0.1+cos(dirtNoise()*12.3245)*.03), 1.);
+                return;
+            }
+
+            //nothing do background
+            vec3 SKY_BLUE = vec3(0.1, 0.94, 2.25)*colconv;
+            
+            vec3 skyc = mix(SKY_BLUE, DIRT_COLOR*colconv, clamp(1.-td*2.,0.,1.));
+
+            gl_FragColor = vec4(skyc,1.);
+            return;
+        }
+
+
+        vec3 c;
+
+        if (id == 0) {
+            float cuv = dirtNoise();
+            c = mix(DIRT_COLOR*(colconv + cos(cuv*12.3245)*.07),
+                    SAND_COLOR*(colconv+cuv*.01),
+                    clamp((td+.12+cuv*.02)*10.,0.,1.));
+        } else {
+            c = vec3(.3+cos(length(floor(uv*16.)))*.1);
+        }
+
+        gl_FragColor = vec4(c,1.);
+    }
+</script>
+
+<script type="glsl" id="b">
+    precision mediump float;
+    
+
+
+    //player frag shader
+
+    varying vec2 uv;
+
+    uniform vec4 other;/*  x = animation time     y = side      z = animation id  */
+
+    #define EPSILON .01
+    #define cmpDist(i) if (db < EPSILON) {d = db; id = i;}
+    #define colconv .39215
+
+    void main(void) {
+
+        vec2 limbAnimPos;
+        if (other.z == 0.0) {
+           limbAnimPos = vec2(.1,0.);
+        } else {
+           limbAnimPos = vec2(cos(other.x),0.);
+        }
+
+        vec2 headPos = vec2(.1*other.y,.4);
+
+        //front limbs
+        float d = min(  length(uv-vec2( limbAnimPos.x*.2 , 0. ))-0.08, //arm
+                   length(uv-vec2( limbAnimPos.x*.2 , -.6 ))-0.1  ); //leg
+        int id = 0;
+
+        //body
+        float db = length(max(abs(uv-vec2(0.,-.15))-vec2(.14,.35), 0.))-.1;
+        cmpDist(1);
+        
+
+        //hair
+        db = length(uv-vec2(0.,.1)-headPos)-(0.35+cos(atan(uv.y,uv.x*other.y)*16.)*.05);
+        cmpDist(2);
+
+
+        //back limbs
+        db = min( length(uv-headPos)-0.3, //head
+                      min(length(uv-vec2( -limbAnimPos.x*.2+.1*other.y , 0. ))-0.08, //arm
+                            length(uv-vec2( -limbAnimPos.x*.2+.1*other.y, -.6 ))-0.1) ); //leg
+        cmpDist(0);
+
+
+        if (d > EPSILON) {
+            gl_FragColor = vec4(0.0,0.0,0.0,0.0);
+            return;
+        }
+
+
+        vec3 SKIN_COLOR = vec3(2.49,1.93,1.54)*colconv;
+        vec3 SHIRT_COLOR = vec3(2.54,2.46,1.10)*colconv;
+        vec3 HAIR_COLOR = vec3(.8,.83,.88);
+
+        vec3 c;
+        if (id == 0) {
+            c = mix(
+                   mix(SKIN_COLOR, HAIR_COLOR, clamp(uv.y*2.-abs(d)*7.,0.,1.)),
+                   vec3(.2,.8,.2),
+                    clamp(1.-(length(uv-headPos-vec2(0.2*other.y,0.))-.06)*80.,0.,1.) ) ;
+        }
+        if (id == 1) {
+            c = SHIRT_COLOR;
+        }
+        if (id == 2) {
+            c = HAIR_COLOR;
+        }
+
+        gl_FragColor = vec4(c* (1.-max(0.,-uv.x)*1.4),1.0);
+    
+    }
+
+</script>
+
+<script type="glsl" id="c">
+
+    precision mediump float;
+    
+
+
+    //lighting pass shader
+
+    varying vec2 uv;
+    uniform vec4 other,camera;
+
+    #define EPSILON .01
+
+    float df(in vec2 p) {
+        float td = p.y + ( cos(.64 + p.x*.0634)*3.0 +cos(.466+p.x*.03723)*1.4 + cos(.23 + p.x*.01452 * cos(.51 + p.x*.03377))*.3 + cos(p.x*.64523)*.05 + cos(p.x*4.253)*.02 );
+        float tsd = abs(p.y + ( (cos(p.x*.1831))*2. + cos(p.x*.62523)*.05 + cos(p.x*4.153)*.02 ) + 0. )-.4;
+
+        return max(-tsd,td);
+    }
+
+    void main(void) {
+
+        vec2 lightDir = normalize(vec2(.2,1.));
+        
+        vec2 wuv = uv+other.xy;
+        
+        const float shadowReach = 2.;
+        
+        float sum = 0.,s = 0.01,d;
+        for (int i = 0; i < 64; i++) {
+            d = df(wuv+lightDir*s);
+            if (d < EPSILON) {
+                d = max(EPSILON, abs(d));
+                sum += d;
+                if (sum > 1./shadowReach) break;
+            }
+
+            s += d;
+            //sum += max(0.,.1-d)*10.;
+        }
+
+        sum = pow(max(0.,1.-sum*shadowReach),2.);
+
+
+        const vec3 lightColor = vec3(1.,1.,1.);
+        const float ambient = .16;
+
+
+        gl_FragColor = vec4( lightColor*((1.-ambient)*sum + ambient) ,    1. );
+    
+    }
+
+</script>
+
+
+<script type="glsl" id="d">
+    precision mediump float;
+    
+    //turret frag shader
+
+    varying vec2 uv;
+
+    uniform vec4 transform;
+
+    #define EPSILON .01
+
+    void main(void) {
+
+
+        //front limbs
+        float d = min( length(max(abs(uv-vec2(0.,-.5))-vec2(.1+max(0.,-(uv.y)),.1), 0.))-.1,
+                  min( length(max(abs( mod(min(abs(uv-vec2(0.,-.15)),.4),vec2(.2,0.))-vec2(.1,0.) )-vec2(.05,.15), 0.)),
+                       length(uv-vec2(0.,.2))-.4 )); 
+
+        if (d > EPSILON) {
+            gl_FragColor = vec4(0.);
+            return;
+        }
+
+        vec3 c = mix( vec3(.8, .1, .1),
+                      vec3(.45),
+                      clamp( length(uv - vec2(0.,.2) + normalize(transform.xy*vec2(1.,sign(transform.w)))*.25 )*5.-.1, 0., 1. ) );
+
+        gl_FragColor = vec4(c,1.0);
+    
+    }
+
+</script>
+
+<script type="glsl" id="e">
+    precision mediump float;
+    
+    //plasma frag shader
+
+    varying vec2 uv;
+
+    uniform vec4 other;
+    uniform vec4 camera;
+
+    void main(void) {
+        
+        float res = 1.;
+        for (int i = 0; i < 3; i++) {
+            res += cos(uv.y*12.345 - other.x*4. + cos(res*12.234)*.2 + cos(uv.x*32.2345 + cos(uv.y*17.234)) ) + cos(uv.x*12.345);
+        }
+
+        vec3 c = mix(other.yzw,
+                     other.yzw*.5+.2,
+                     cos(res+cos(uv.y*24.3214)*.1+cos(uv.x*6.324+other.x*4.)+other.x)*.5+.5);
+
+        gl_FragColor = mix(vec4(c,1.),
+                           vec4(0.),
+                           clamp( ( length(uv + cos(other.x+uv.yx*4.34+uv.xy*res)*.1 )*max(0., 10.-length(camera.zw)*2.) - length(camera.zw)*3.0 ) , 0., 1.) );
+    }
+
+</script>
+
+
+<script type="glsl" id="f">
+    precision mediump float;
+    
+    //explosion frag shader
+
+    varying vec2 uv;
+
+    uniform vec4 other;
+    uniform vec4 camera;
+
+    void main(void) {
+        
+        float res = 1.;
+        for (int i = 0; i < 3; i++) {
+            res += cos(uv.y*4.345 + other.x*12. + cos(res*12.234)*.2 + cos(uv.x*16.2345 + cos(uv.y*6.234)) ) + cos(uv.x*4.345);
+        }
+
+        vec3 c = mix(other.yzw,
+                     other.yzw*.5+.2,
+                     cos(res+cos(uv.y*24.3214)*.1+cos(uv.x*6.324+other.x*4.)+other.x)*.5+.5);
+
+
+       vec4 oc = mix(vec4(1.),
+                 vec4(0.),
+                 clamp(abs(((6.-pow(other.x,2.)*6.)-length((uv-vec2(0.,-.2))*vec2(4.,32.)))*(2.-other.x)), 0., 1.) );
+    
+        gl_FragColor = mix(vec4(c,1.),
+                           oc,
+                           clamp( (length(uv + cos(other.x+uv.yx/4.34+uv.xy*res)*.1 )*4.- 
+                            ( (.2+abs(uv.y*3. + max(0.,uv.y*.5*other.x)))) + max(0.,other.x-.5) + max(0.,uv.y*(other.x-.5)) ) , 0., 1.) );
+    }
+
+</script>
+
+
+<script type="glsl" id="g">
+    precision mediump float;
+    
+    //circle frag shader
+
+    varying vec2 uv;
+
+    uniform vec4 other;
+
+    void main(void) {
+        
+        gl_FragColor = mix(vec4(other.xyz,1.),
+                           vec4(0.),
+                           clamp(length(uv)*5.-2.,0.,1.));
+        
+    }
+
+</script>
+
+<script type="glsl" id="h">
+    precision mediump float;
+    
+    //rocket bot frag shader
+
+    varying vec2 uv;
+
+    uniform vec4 transform,other;
+
+    #define EPSILON .01
+
+    void main(void) {
+
+        float wd = length(uv-vec2(.0,-.5))-.35;
+        float d = min( wd ,
+                  min( length(max(abs( mod(min(abs(uv-vec2(0.,-.15)),.4),vec2(.2,0.))-vec2(.1,0.) )-vec2(.05,.15), 0.)),
+                       length(uv-vec2(0.,.2))-.4 )); 
+
+        if (d > EPSILON) {
+            gl_FragColor = vec4(0.);
+            return;
+        }
+
+        vec2 eyePos = vec2(0.,.2) - normalize(transform.xy*vec2(1.,sign(transform.w)))*.25;
+        vec3 c = mix( vec3(.8, .1, .1)*(length(uv-eyePos)*4.),
+                    vec3(mix(.45, .15, (cos(other.x+floor(atan(uv.y+.5,uv.x)*8.))*.5+.5)*max(0.,1.-wd*10.) )),
+                      clamp( length(uv - eyePos)*10.-.1, 0., 1. ) );
+
+        gl_FragColor = vec4(c,1.0);
+    
+    }
+
+</script>
+
+
+
+<script>
+
+
+var width = 640;
+var height = 480;
+
+var canvasElement,uiElement;
+var gl;
+var quadVB;//vertex array buffer for fullscreen quad
+
+var shaders = [];//array of shaders
+var vertexAttribs = [];//vertex attributes for each shader
+var cameraUniforms = [];//uniforms for camera data
+var transformUniforms = [];//uniforms for transform data
+var otherUniforms = [];//for other stuff like animation and random other data
+
+
+var mouseX,mouseY,keys = [];
+
+var score = 0;
+var scoreElement;
+
+var hpBarElement,portalBarElement;
+
+var player;
+var enemies = [];
+var entities = [];
+var entityDeleteQueue = [];
+var enemyDeleteQueue = [];
+
+
+
+var sqrt,abs,sin,cos,floor,sign,random;
+function min(a,b) {
+    return a<b?a:b;
+}
+function max(a,b) {
+    return a>b?a:b;
+}
+function dot(x1,y1,x2,y2) {
+    return x1*x2 + y1*y2;
+}
+function clamp(n,min,max) {
+    if (n < min) return min;
+    if (n > max) return max;
+    return n;
+}
+function length(x,y) {
+    return sqrt(x*x + y*y);
+}
+
+function map(x,y) {
+
+    var d = y + ( cos(.64 + x*.0634)*3.0 +cos(.466+x*.03723)*1.4 + cos(.23 + x*.01452 * cos(.51 + x*.03377))*.3 + cos(x*.64523)*.05 + cos(x*4.253)*.02 );
+
+    //( cos(x*.01452 * cos(x*.03377))*.3 + cos(x*.64523)*.05 + cos(x*4.253)*.02 );
+
+    //return max(-(abs(y + ( (cos(x*.1831))*2. + cos(x*.62523)*.05 + cos(x*4.153)*.02 ) + 0. )-.4),d);
+
+    var rx = (abs(x)%3.0) - 1.5;
+    var ry = (abs(min(y,0.))%3.0) - 1.5;
+
+    var fx = floor(x/3.0);
+    var fy = floor(y/3.0);
+
+    var ax = cos(fy+cos(fx*2.345));
+    var ay = cos(fx+cos(fy*2.345));
+
+    var bx = sin(fy);
+    var by = sin(fx);
+
+    var pax = rx-ax;
+    var pay = ry-ay;
+
+    var bax = bx-ax;
+    var bay = by-ay;
+
+    var h = clamp(dot(pax,pay,bax,bay)/dot(bax,bay,bax,bay), 0.0, 1.0);
+
+    return min ( length( pax - bax*h , pay-bay*h ) - .025,
+                 max(-(abs(y + ( (cos(x*.1831))*2. + cos(x*.62523)*.05 + cos(x*4.153)*.02 ) + 0. )-.4),d) );
+}
+
+
+
+
+
+//removed in final revision
+function debugShader(s) {
+   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      alert("Shader error, check the console for a detailed error!");
+      console.log(gl.getShaderInfoLog(s));
+      return false;
+   }
+  
+  return true;
+}
+
+function additiveBlending() {
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+}
+function normalBlending() {
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+}
+
+function DistanceQuery() {
+    this.actor = null;
+    this.distance = null;
+}
+function mapWithActors(x,y,out,act) {
+    var d = map(x,y);
+    var td = player.Distance(x,y);
+    var actor = null;
+
+    if (td < d) {
+        d = td;
+        actor = player;
+    }
+
+    var i = enemies.length;
+    while (i--) {
+        if (enemies[i] == act) continue;
+        td = enemies[i].Distance(x,y);
+        if (td < d) {
+            d = td;
+            actor = enemies[i];
+        }
+    }
+    
+    out.distance = d;
+    out.actor = actor;
+}
+
+function RaycastHit() {
+    this.hitPositionX = 0.0;
+    this.hitPositionY = 0.0;
+    this.distance = 0.0;
+
+    this.actor = null;
+}
+RaycastHit.prototype.Set = function(hx,hy,act,dst) {
+    this.hitPositionX = hx;
+    this.hitPositionY = hy;
+    this.actor = act;
+    this.distance = dst;
+}
+function Raycast(startX,startY,dirX,dirY,distance,epsilon,outHit) {
+    var dq = new DistanceQuery();
+    mapWithActors(startX,startY,dq);
+
+    var s = dq.distance;
+    while (s < distance) {
+        if (dq.distance < epsilon) {
+            outHit.Set(startX,startY,dq.actor,s);
+            return true;
+        }
+        mapWithActors(startX+dirX*s, startY+dirY*s, dq);
+        s += dq.distance;
+    }
+
+    return false;
+}
+
+
+function Rigidbody(rad,fric,bounc) {
+    this.x = 0.0;
+    this.y = 0.0;
+
+    this.radius = rad;
+    this.radiusDivTwo = rad/2.0;
+    this.friction = fric;
+    this.bounce = bounc*2.0;
+    this.constantBounce = this.radius*10.0;//for slope climbing
+
+    this.velocityX = 0.0;
+    this.velocityY = 0.0;
+    this.absVelocityX = 0.0;
+    this.absVelocityY = 0.0;
+
+    this.gravityX = 0.0;
+    this.gravityY = -2.9;
+    this.absGravityX = abs(this.gravityX);
+    this.absGravityY = abs(this.gravityY);
+
+    this.onMapCollision = null;
+    this.onDynamicCollision = null;
+    this.dq = new DistanceQuery();
+}
+Rigidbody.prototype.SetGravity = function(x,y) {
+    this.gravityX = x;
+    this.gravityY = y;
+    this.absGravityX = abs(this.gravityX);
+    this.absGravityY = abs(this.gravityY);
+}
+
+Rigidbody.prototype.CollideDynamic = function() {
+    if (this.onDynamicCollision) {
+        this.onDynamicCollision(this.dq.actor);
+    }
+    this.Collide();
+}
+Rigidbody.prototype.Collide = function() {
+    
+    var normX = map(this.x+0.001,this.y) - map(this.x-0.001,this.y);
+    var normY = map(this.x,this.y+0.001) - map(this.x,this.y-0.001);
+    var normLen = length(normX,normY);
+    
+    normX /= normLen;
+    normY /= normLen;
+
+    var velLen = length(this.velocityX,this.velocityY);
+    if (this.onMapCollision) {
+        this.onMapCollision(normX,normY,velLen);
+    }
+
+    var dp = max(0.0, (this.velocityX/velLen)*-normX + (this.velocityY/velLen)*-normY);
+    var fric = (1.0-this.friction)+this.friction*dp;
+    var bnc = (this.bounce*dp+this.constantBounce*(1.0-dp))*velLen;
+
+    this.velocityX = this.velocityX*fric + normX*bnc;//*velLen;
+    this.velocityY = this.velocityY*fric + normY*bnc;//*velLen;
+
+}
+
+Rigidbody.prototype.UpdateRigidbodyDynamic = function() {
+   var moveX = this.velocityX*deltaTime;
+    var moveY = this.velocityY*deltaTime;
+
+    var moveLen = length(moveX,moveY);
+    if (moveLen > this.radiusDivTwo) {
+
+        var normX = moveX/moveLen;
+        var normY = moveY/moveLen;
+
+        var lcd = this.radiusDivTwo, s = this.radiusDivTwo;
+        mapWithActors(this.x+normX*s,
+                      this.y+normY*s,this.dq,this);
+        for (var i = 0; i < 4; i++) {
+
+            if (this.dq.distance < this.radius) {
+                s -= lcd;
+                break;
+            }
+
+            lcd = this.dq.distance;
+            s += this.dq.distance>this.radiusDivTwo?this.dq.distance:this.radiusDivTwo;
+            //s += (cd>this.radius?cd:this.radius)*0.5;
+
+            if (s > moveLen) {
+                s = min(s,moveLen);
+                mapWithActors(this.x+normX*s,
+                              this.y+normY*s,this.dq,this);
+                if (this.dq.distance < this.radius) {
+                    s -= lcd;
+                }
+                break;
+            }
+
+            mapWithActors(this.x+normX*s,
+                     this.y+normY*s,this.dq,this);
+
+        }
+        
+        this.x += normX*s;
+        this.y += normY*s;
+
+        if (this.dq.distance < this.radius) {
+           this.CollideDynamic();
+        }
+
+    } else {
+        var nextX = this.x+moveX;
+        var nextY = this.y+moveY;
+        mapWithActors(nextX,nextY,this.dq,this);
+        if (this.dq.distance < this.radius) {
+            this.CollideDynamic();
+        } else {
+            this.x = nextX;
+            this.y = nextY;
+        }
+    }
+
+
+    if (this.absVelocityX < this.absGravityX) {
+        this.velocityX += this.gravityX*deltaTime;
+    }
+    if (this.absVelocityY < this.absGravityY) {
+        this.velocityY += this.gravityY*deltaTime;
+    }
+
+    this.absVelocityX = abs(this.velocityX);
+    this.absVelocityY = abs(this.velocityY);
+}
+Rigidbody.prototype.UpdateRigidbody = function() {
+    var moveX = this.velocityX*deltaTime;
+    var moveY = this.velocityY*deltaTime;
+
+    var moveLen = length(moveX,moveY);
+    if (moveLen > this.radiusDivTwo) {
+
+        var normX = moveX/moveLen;
+        var normY = moveY/moveLen;
+
+        var lcd = this.radiusDivTwo, s = this.radiusDivTwo;
+        var cd = map(this.x+normX*s,
+                     this.y+normY*s);
+        for (var i = 0; i < 4; i++) {
+
+            if (cd < this.radius) {
+                s -= lcd;
+                break;
+            }
+
+            lcd = cd;
+            s += cd>this.radiusDivTwo?cd:this.radiusDivTwo;
+            //s += (cd>this.radius?cd:this.radius)*0.5;
+
+            if (s > moveLen) {
+                s = min(s,moveLen);
+                cd = map(this.x+normX*s,
+                        this.y+normY*s);
+                if (cd < this.radius) {
+                    s -= lcd;
+                }
+                break;
+            }
+
+            cd = map(this.x+normX*s,
+                     this.y+normY*s);
+
+        }
+        
+        this.x += normX*s;
+        this.y += normY*s;
+
+        if (cd < this.radius) {
+           this.Collide();
+        }
+
+    } else {
+        var nextX = this.x+moveX;
+        var nextY = this.y+moveY;
+        if (map(nextX,nextY) < this.radius) {
+            this.Collide();
+        } else {
+            this.x = nextX;
+            this.y = nextY;
+        }
+    }
+
+
+    if (this.absVelocityX < this.absGravityX) {
+        this.velocityX += this.gravityX*deltaTime;
+    }
+    if (this.absVelocityY < this.absGravityY) {
+        this.velocityY += this.gravityY*deltaTime;
+    }
+
+    this.absVelocityX = abs(this.velocityX);
+    this.absVelocityY = abs(this.velocityY);
+}
+
+
+function PortalShot(px,py,dx,dy) {
+    Rigidbody.call(this,0.04,0.9,0.98);
+
+    this.x = px;
+    this.y = py;
+    this.velocityX = dx*3.0;
+    this.velocityY = dy*3.0;
+
+    this.scale = 0.15;
+    this.visScale = this.scale*2.0;
+
+    this.distanceTravelled = 0.0;
+
+    this.hitPlayerX = 0.0;
+    this.hitPlayerY = 0.0;
+    this.hit = false;
+
+    this.SetGravity(0.0,0.0);
+
+    this.onDynamicCollision = this.OnDynamicCollision;
+
+    entities.push(this);
+}
+PortalShot.prototype = Object.create(Rigidbody.prototype);
+
+PortalShot.prototype.OnDynamicCollision = function(actor) {
+    
+    this.hitPlayerX = player.x;
+    this.hitPlayerY = player.y;
+    this.hit = true;
+
+    player.x = this.x;
+    player.y = this.y;
+    if (actor) {
+        if (actor == player) return;
+        actor.Teleport(this.hitPlayerX,this.hitPlayerY);
+    }
+
+}
+PortalShot.prototype.Update = function() {
+    if (this.hit) {
+        this.scale -= deltaTime;
+        this.visScale = this.scale*2.0;
+        if (this.scale < 0.01) {
+            entityDeleteQueue.push(this);
+        }
+        return;
+    }
+    
+    this.distanceTravelled += (this.absVelocityX + this.absVelocityY)*deltaTime;
+    if (this.distanceTravelled > 5.0) {
+        entityDeleteQueue.push(this);
+    }
+
+    this.UpdateRigidbodyDynamic();
+}
+PortalShot.prototype.Render = function() {
+    gl.useProgram(shaders[4]);
+    gl.uniform4f(otherUniforms[4],
+                shaderTime,
+                0.0,
+                1.0,
+                0.0);
+
+    renderShader(4, this.x-player.x, this.y-player.y, this.scale, this.scale, 0.0, 0.0, this.visScale, this.visScale);
+
+    if (this.hit) {
+        renderShader(4, this.hitPlayerX-player.x, this.hitPlayerY-player.y, this.scale, this.scale, 0.0, 0.0, this.visScale, this.visScale);
+    }
+}
+PortalShot.prototype.constructor = PortalShot;
+
+function Player() {
+    Rigidbody.call(this,
+            0.04,//radius
+            0.4,//friction
+            0.02// bounce
+            );
+
+
+    this.animationTime = 0.0;
+    this.animationId = 0.0;
+    this.side = 1;
+
+    this.portalPowerRecharge = 0.0;
+    this.portalPower = 5;
+    this.health = 100;
+    hpBarElement.style.width = this.health*1.8 + "px";
+
+    this.grounded = false;
+    this.groundX = 0.0;
+    this.groundY = 0.0;
+
+    this.onMapCollision = this.OnMapCollision;
+}
+Player.prototype = Object.create(Rigidbody.prototype);
+Player.prototype.Distance = function(x,y) {
+    return length(max(abs(this.x-x)-0.04, 0.0),
+                  max(abs(this.y+0.14-y)-0.15, 0.0));
+}
+Player.prototype.OnMapCollision = function(normalX, normalY, velocityLen) {
+    if (normalY > 0.5) {
+        this.grounded = true;
+    }
+}
+Player.prototype.Damage = function(amount) {
+    this.health -= amount;
+    if (this.health < 1) {
+        GameOver();
+    }
+    hpBarElement.style.width = this.health*1.8 + "px";
+}
+Player.prototype.Update = function() {
+    this.grounded = false;
+    this.UpdateRigidbody();
+    if (this.grounded) {
+        this.groundX = this.x;
+        this.groundY = this.y;
+    }
+
+    if (this.grounded || length(this.groundX-this.x, this.groundY-this.y) < 0.2) {
+        if (keys[38] || keys[32]) {
+            this.velocityY = 1.5;
+        }
+    }
+
+    this.portalPowerRecharge -= deltaTime;
+    if (this.portalPowerRecharge < 0.0) {
+        if (this.portalPower < 5) {
+            this.portalPower++;
+            portalBarElement.style.width = this.portalPower*36 + "px";
+        }
+
+        if (this.health < 100) {
+            this.health++;
+            hpBarElement.style.width = this.health*1.8 + "px";
+        }
+        scoreElement.innerHTML = "Score: "+score+"<br>Time: "+time.toFixed(2);
+    
+        if (enemies.length < min(25.0,score/2.0)+4) {
+            SpawnEnemy();
+        }
+
+        this.portalPowerRecharge = 1.0;
+    }
+
+    this.animationTime = (this.animationTime+deltaTime*10.0)%1000.0;
+    
+    if (this.absVelocityX < 0.5) {
+        
+        this.animationId = 0;
+    
+    } else {
+
+        this.animationId = 1;
+        if (this.velocityX > 0.0) {
+            this.side = 1.0;
+        } else {
+            this.side = -1.0;
+        }
+
+    }
+
+    if (keys[37] || keys[65]) {//left arrow key
+        if (this.velocityX > -1.5) {
+            this.velocityX -= deltaTime*15.0;
+        }
+    } else if (keys[39] || keys[68]) {//right arrow key
+        if (this.velocityX < 1.5) {
+            this.velocityX += deltaTime*15.0;
+        }
+    }
+
+}
+Player.prototype.constructor = Player;
+
+
+function Turret(x,y) {
+    this.x = x;
+    this.y = y;
+
+    this.scaleX = 0.125;
+    this.scaleY = 0.125;
+
+    this.health = 25;
+
+    this.shootCooldown = 0.0;
+
+    enemies.push(this);
+    entities.push(this);
+}
+Turret.prototype.Distance = function(x,y) {
+    return length(this.x-x,this.y-y)-0.08;
+}
+Turret.prototype.Damage = function(amount) {
+    this.health -= amount;
+    if (this.health < 1) {
+        this.Kill();
+    }
+}
+Turret.prototype.Kill = function() {
+    score++;
+    this.health = 0;
+    new Explosion(this.x,this.y);
+    enemyDeleteQueue.push(this);
+}
+Turret.prototype.Teleport = function(tx,ty) {
+    this.x = tx;
+    this.y = ty;
+    if (this.health > 0) {
+        this.Kill();
+    }
+}
+Turret.prototype.Render= function() {
+    gl.useProgram(shaders[3]);
+    renderShader(3, this.x-player.x, this.y-player.y, this.scaleX, this.scaleY, 0.0, 0.0, 1.0, 1.0);
+}
+Turret.prototype.Update = function() {
+    this.shootCooldown -= deltaTime;
+    if (this.shootCooldown < 0.0) {
+        var dirX = player.x-this.x;
+        var dirY = player.y+.125-this.y;
+        var dirLen = length(dirX,dirY);
+        dirX /= dirLen;
+        dirY /= dirLen;
+        new Laser(this.x+dirX*0.12, this.y+dirY*0.12, dirX, dirY);
+
+        this.shootCooldown = 2.0;
+    }
+}
+Turret.prototype.constructor = Turret;
+
+
+function Rockbot(x,y) {
+    Rigidbody.call(this, 0.04, 0.4, 0.1);
+    
+    this.x = x;
+    this.y = y;
+
+    this.health = 75;
+    this.animationTime = 0.0;
+
+    this.status = 0;
+    this.statusCooldown = 0.5;
+
+    entities.push(this);
+    enemies.push(this);
+}
+Rockbot.prototype = Object.create(Rigidbody.prototype);
+
+Rockbot.prototype.Distance = function(x,y) {
+    return length(max(abs(this.x-x)-0.04, 0.0),
+                  max(abs(this.y+0.2-y)-0.15, 0.0));
+}
+Rockbot.prototype.Damage = function(amount) {
+    this.health -= amount;
+    if (this.health < 1) {
+        this.Kill();
+    }
+}
+Rockbot.prototype.Kill = function() {
+    score += 3;
+    this.health = 0;
+    new Explosion(this.x,this.y);
+    enemyDeleteQueue.push(this);
+}
+Rockbot.prototype.Teleport = function(tx,ty) {
+    this.x = tx;
+    this.y = ty;
+}
+Rockbot.prototype.Update = function() {
+    this.UpdateRigidbody();
+
+    this.animationTime = (this.animationTime+this.velocityX*deltaTime)%1000.0;
+
+    this.statusCooldown -= deltaTime;
+    if (this.statusCooldown > 0.0) return;
+
+    this.statusCooldown = 0.5;
+    switch (this.status) {
+        case 0:
+            var dirX = player.x-this.x;
+            var dirY = player.y-this.y;
+            var dirLen = length(dirX,dirY);
+            dirX /= dirLen;
+            dirY /= dirLen;
+
+           var minDir = min(0.15/abs(dirX),0.35/abs(dirY));
+
+            var rayHit = new RaycastHit();
+            if (Raycast(this.x+dirX*minDir,this.y+dirY*minDir,dirX,dirY,15.0,0.01,rayHit)) {
+                if (rayHit.actor == player) {
+                    this.status = 1;
+                } else {
+                    this.status = 2;
+                }
+            } else {
+                this.status = 2;
+            }
+
+            break;
+
+
+       case 1://shoot at player status
+            var dirX = player.x-this.x;
+            var dirY = player.y-0.1-this.y;
+            var dirLen = length(dirX,dirY);
+            dirX /= dirLen;
+            dirY /= dirLen;
+
+            var minDir = min(0.2/abs(dirX),0.5/abs(dirY));
+            new Rocket(this.x+dirX*minDir,this.y+0.2+dirY*minDir,dirX,dirY);
+            this.status = 0;
+            break;
+
+
+       case 2://chase player status
+            if (abs(player.y-this.y) > 1.0) {
+                this.velocityY = 1.0;
+                this.velocityX = sign( map(this.x+0.001,this.y) - map(this.x-0.001,this.y) )*1.5;
+            } else {
+                this.velocityX = sign(player.x-this.x)*1.5;
+            }
+            if (!this.velocityX) {
+                this.velocityX = 0.0;
+            }
+            this.status = 0;
+            break;
+
+    }
+}
+Rockbot.prototype.Render = function() {
+    gl.useProgram(shaders[7]);
+    gl.uniform4f(otherUniforms[7],this.animationTime,0.0,0.0,0.0);
+    renderShader(7, this.x-player.x, this.y+0.18-player.y, 0.2, 0.35, 0.0, 0.0, 1.0, 1.0);
+}
+Rockbot.prototype.constructor = Rockbot;
+
+
+function Rocket(x,y,dx,dy) {
+    Rigidbody.call(this, 0.1, 1.0, 0.0);
+
+    this.x = x;
+    this.y = y;
+    this.velocityX = dx;
+    this.velocityY = dy;
+
+    this.SetGravity(0.0,0.0);
+
+    this.onDynamicCollision = this.OnDynamicCollision;
+
+    this.distanceTravelled = 0.0;
+
+    this.killed = false;
+
+    entities.push(this);
+    enemies.push(this);
+}
+Rocket.prototype = Object.create(Rigidbody.prototype);
+
+Rocket.prototype.Distance = function(x,y) {
+    return length(this.x-x,this.y-y)-0.1;
+}
+Rocket.prototype.Damage = function(amount) {
+    this.Kill();
+}
+Rocket.prototype.Kill = function() {
+    if (this.killed) return;
+    this.killed = true;
+
+    var pdst = player.Distance(this.x,this.y);
+    if (pdst < 0.5) {
+        player.Damage(40.0 * max(0.0,0.25-pdst));
+    }
+
+    var i = enemies.length;
+    while (i--) {
+        var dst = enemies[i].Distance(this.x,this.y);
+        if (dst < 0.5) {
+            enemies[i].Damage(40.0 * max(0.0,0.25-dst));
+        }
+    }
+
+    new Explosion(this.x,this.y);
+    enemyDeleteQueue.push(this);
+}
+Rocket.prototype.Teleport = function(tx,ty) {
+    this.x = tx;
+    this.y = ty;
+}
+
+Rocket.prototype.OnDynamicCollision = function(actor) {
+    if (actor != null) {
+        actor.Damage(10);
+    }
+    this.Kill();
+}
+
+Rocket.prototype.Update = function() {
+    this.distanceTravelled += (this.absVelocityX + this.absVelocityY)*deltaTime;
+    if (this.distanceTravelled > 15.0) {
+        entityDeleteQueue.push(this);
+    }
+    this.UpdateRigidbodyDynamic();
+}
+Rocket.prototype.Render = function() {
+    gl.useProgram(shaders[6]);
+    gl.uniform4f(otherUniforms[6],
+                0.6,
+                0.6,
+                0.6,
+                0.0);
+
+    renderShader(6, this.x-player.x, this.y-player.y, 0.125, 0.125, 0.0, 0.0, 1.0, 1.0);
+
+    gl.useProgram(shaders[4]);
+    gl.uniform4f(otherUniforms[4],
+                shaderTime,
+                0.8,
+                0.6,
+                0.4);
+    renderShader(4, this.x-player.x-this.velocityX*0.1, this.y-player.y-this.velocityY*0.1, 0.125, 0.125, 0.0, 0.0, 1.0, 1.0);
+}
+Rocket.prototype.constructor = Rocket;
+
+
+function Laser(x,y,dx,dy) {
+    Rigidbody.call(this, 0.01, 1.0, 0.0);
+
+    this.x = x;
+    this.y = y;
+    this.velocityX = dx*1.0;
+    this.velocityY = dy*1.0;
+
+    this.SetGravity(0.0,0.0);
+
+    this.onDynamicCollision = this.OnDynamicCollision;
+
+    this.distanceTravelled = 0.0;
+
+    entities.push(this);
+}
+Laser.prototype = Object.create(Rigidbody.prototype);
+
+Laser.prototype.OnDynamicCollision = function(actor) {
+    if (actor != null) {
+        actor.Damage(5);
+    }
+    entityDeleteQueue.push(this);
+}
+Laser.prototype.Update = function() {
+    this.distanceTravelled += (this.absVelocityX + this.absVelocityY)*deltaTime;
+    if (this.distanceTravelled > 5.0) {
+        entityDeleteQueue.push(this);
+    }
+    this.UpdateRigidbodyDynamic();
+}
+Laser.prototype.Render = function() {
+    gl.useProgram(shaders[6]);
+    gl.uniform4f(otherUniforms[6],
+                0.3,
+                0.2,
+                0.2,
+                0.0);
+
+    renderShader(6, this.x-player.x, this.y-player.y, 0.03, 0.03, 0.0, 0.0, 1.0, 1.0);
+}
+Laser.prototype.constructor = Laser;
+
+function SpawnEnemy() {
+    var x = player.x + random()*10.0 - 5.0;
+    var y = player.y + 5.0;
+
+    for (var i = 0; i < 32; i++) {
+        if (map(x,y) > 0.2) break;
+        y -= 0.2;
+    }
+
+    if (random() > 0.5) {
+        var rayres = new RaycastHit();
+        if (Raycast(x,y,0.0,-1.0,25.0,0.2,rayres)) {
+            y -= rayres.distance-0.08;
+        } else {
+            y -= 25.0;
+        }
+        new Turret(x,y);
+    } else {
+        new Rockbot(x,y);
+    }
+}
+
+
+function GameOver() {
+    update = render = null;
+
+    var goe = document.getElementById("gameover");
+    var hs = parseFloat(window.localStorage.highscore);
+    var scoreDivTime = score/time;
+    var newHighScore = "";
+    if (!hs || scoreDivTime > hs) {
+        window.localStorage.highscore = hs = scoreDivTime;
+        newHighScore = "You got a new high score!";
+    }
+    goe.innerHTML = "Game over!<br>You scored "+score+" points over "+time.toFixed(2)+" seconds totalling to<br>"+scoreDivTime.toFixed(4)+" points per second!<br><br>"+newHighScore+"<br>High score: "+hs.toFixed(4)+" points per second<br><br>Refresh the page to play again!";
+    goe.style.display = "inline-block";
+
+     
+    canvasElement.style.display = hpBarElement.style.display = portalBarElement.style.display = scoreElement.style.display =  "none";
+}
+
+
+function Explosion(x,y) {
+    this.x = x;
+    this.y = y;
+    this.scale = 0.25;
+
+    this.time =1.0;
+
+    entities.push(this);
+}
+Explosion.prototype.Update = function() {
+    this.time -= deltaTime;
+    if (this.time < 0.01) {
+        entityDeleteQueue.push(this);
+    }
+}
+Explosion.prototype.Render = function() {
+    gl.useProgram(shaders[5]);
+    gl.uniform4f(otherUniforms[5],
+                this.time,
+                0.0,
+                0.0,
+                0.0);
+    renderShader(5, this.x-player.x, this.y-player.y, this.scale, this.scale*2.0, 0.0, 0.0, 1.0, 1.0);
+}
+Explosion.prototype.constructor = Explosion;
+
+
+var nowTime,lastTime,deltaTime,time = 0.0,shaderTime;
+function update() {
+    nowTime = Date.now();
+    time += deltaTime = min(1.0, (nowTime-lastTime)/1000.0);
+    lastTime = nowTime;
+
+    shaderTime = time%1000.0;
+
+
+    player.Update();
+    var i = entities.length;
+    while (i--) {
+        entities[i].Update();
+    }
+
+
+    var i = entityDeleteQueue.length;
+    while (i--) {
+        var indOf = entities.indexOf(entityDeleteQueue[i]);
+        if (indOf > -1) entities.splice(indOf,1);
+    }
+    entityDeleteQueue.length = 0;
+
+    var i = enemyDeleteQueue.length;
+    while (i--) {
+        var indOf = enemies.indexOf(enemyDeleteQueue[i]);
+        if (indOf > -1) enemies.splice(indOf,1);
+        indOf = entities.indexOf(enemyDeleteQueue[i]);
+        if (indOf > -1) entities.splice(indOf,1);
+    }
+    enemyDeleteQueue.length = 0;
+
+
+    setTimeout(update,8);
+}
+
+
+
+
+function renderShader(i,tx,ty,tsx,tsy,cx,cy,csx,csy) {
+    gl.uniform4f(transformUniforms[i],tx,ty,tsx,tsy);
+    gl.uniform4f(cameraUniforms[i],cx,cy,csx,csy);
+
+    gl.enableVertexAttribArray(vertexAttribs[i]);
+    gl.vertexAttribPointer(vertexAttribs[i], 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.disableVertexAttribArray(vertexAttribs[i]);
+}
+function render() {
+    requestAnimationFrame(render);
+
+    normalBlending();
+
+    //render map + sky
+    gl.useProgram(shaders[0]);
+    gl.uniform4f(otherUniforms[0],
+                0.0,
+                0.0,
+                0.0,
+                shaderTime);
+    renderShader(0, 0.0, 0.0, 1.0, 1.0,player.x,player.y,1.0,1.0);
+
+
+    //render player
+    gl.useProgram(shaders[1]);
+    gl.uniform4f(otherUniforms[1],
+                player.animationTime,
+                player.side,
+                player.animationId,
+                0.0);
+    renderShader(1, 0.0, 0.14, 0.125, 0.3, 0.0, 0.0, 1.0, 1.0);
+
+
+    var i = entities.length;
+    while (i--) {
+        entities[i].Render();
+    }
+
+    //lighting pass
+    gl.blendFunc(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(shaders[2]);
+    gl.uniform4f(otherUniforms[2],player.x,player.y,0.0,shaderTime);
+    renderShader(2,0.0,0.0,1.0,1.0,0.0,0.0,1.0,1.0);
+
+}
+
+
+
+
+
+
+function onWindowResize() {
+    if (!window.innerWidth && !window.innerHeight) {
+        setTimeout(onWindowResize,25);
+        return;
+    }
+    uiElement.style.left = canvasElement.style.left = window.innerWidth/2.0-width/2.0;
+    uiElement.style.top = canvasElement.style.top = window.innerHeight/2.0-height/1.75;
+}
+
+
+var gameStarted;
+window.onload = function() {
+    uiElement = document.getElementById("y");
+    canvasElement = document.getElementById("z");
+    canvasElement.width = width;
+    canvasElement.height = height;
+    canvasElement.focus();
+
+    gl = canvasElement.getContext("webgl");
+    if (!gl) alert("WebGL not supported");
+    
+    var quadVerts = new Float32Array([1.0,1.0,-1.0,1.0,1.0,-1.0,-1.0,-1.0]);//fullscreen quad triangle strip vertices
+    quadVB = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER,quadVB);//bind fs quad to array buffer, only need to do it this time once since we only use this
+    gl.bufferData(gl.ARRAY_BUFFER,quadVerts,gl.STATIC_DRAW);
+
+    var vertexShaderObject = gl.createShader(gl.VERTEX_SHADER);//simple fullscreen quad vertex shader
+    gl.shaderSource(vertexShaderObject,"precision mediump float; varying vec2 uv; attribute vec2 vertex; uniform vec2 rotation; uniform vec4 transform; uniform vec4 camera; void main(void) {uv=vertex*camera.zw+camera.xy;gl_Position=vec4(vertex*transform.zw+transform.xy,0.,1.);}");
+    gl.compileShader(vertexShaderObject);
+    debugShader(vertexShaderObject);
+
+    for (var i = 0; i < 8; i++) {
+        var pixelShaderObject = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(pixelShaderObject,document.getElementById(String.fromCharCode(i+97)).innerHTML);
+        gl.compileShader(pixelShaderObject);
+        if (!debugShader(pixelShaderObject)) return;
+
+        var shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram,vertexShaderObject);
+        gl.attachShader(shaderProgram,pixelShaderObject);
+        gl.linkProgram(shaderProgram);
+
+        shaders[i] = shaderProgram;
+        vertexAttribs[i] = gl.getAttribLocation(shaderProgram,"vertex");
+        cameraUniforms[i] = gl.getUniformLocation(shaderProgram,"camera");
+        transformUniforms[i] = gl.getUniformLocation(shaderProgram,"transform");
+        otherUniforms[i] = gl.getUniformLocation(shaderProgram,"other");
+    }
+ 
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+
+    
+    hpBarElement = document.getElementById("hpbar");
+    portalBarElement = document.getElementById("portalbar");
+    scoreElement = document.getElementById("score");
+
+
+    sqrt = Math.sqrt;
+    abs = Math.abs;
+    sin = Math.sin;
+    cos = Math.cos;
+    floor = Math.floor;
+    sign = Math.sign;
+    random = Math.random;
+
+    player = new Player();
+    for (var i = 0; i < 256; i++) keys[i] = false;
+
+    gameStarted = false;
+
+window.addEventListener("mouseup",function(e) {
+    if (gameStarted) return;
+    
+    gameStarted = true;
+
+    player.x = random()*50.0 - 25.0;
+    player.y = 10.0;
+    player.velocityY = -10.0;
+
+    document.getElementById("intro").style.display = "none";
+    canvasElement.addEventListener("mousemove",function(e) {
+        mouseX = ((e.clientX-canvasElement.offsetLeft)/width)*2.0 - 1.0;
+        mouseY = 1.0 - ((e.clientY-canvasElement.offsetTop)/height)*2.0;
+    });
+    window.addEventListener("keydown",function(e) {
+        keys[e.keyCode] = true;
+    });
+    window.addEventListener("keyup",function(e) {
+        keys[e.keyCode] = false;
+    });
+    canvasElement.addEventListener("mousedown",function(e) {
+
+        if (player.portalPower === 0) return;
+
+        player.portalPower--;
+        portalBarElement.style.width = player.portalPower*36 + "px";
+
+        var shiftMouseY = mouseY-0.24;
+        var mouseLen = length(mouseX,shiftMouseY);
+        var dirX = mouseX/mouseLen, 
+            dirY = shiftMouseY/mouseLen;
+
+        var minDir = min(0.1/abs(dirX),0.3/abs(dirY));
+        new PortalShot(player.x+dirX*minDir, player.y+dirY*minDir+0.24, dirX, dirY );
+
+    });
+
+    lastTime = Date.now();
+    update();
+    render();
+});
+
+window.addEventListener("resize",onWindowResize);
+onWindowResize();
+
+/*code for outputting ascii key codes:
+
+document.body.addEventListener("keyup", function (event) {
+  console.log(event.keyCode);
+});*/
+
+
+};
+
+
+
+
+
+
+
+</script>
+<div id="x">
+
+<canvas id="z"></canvas>
+<div id="y">
+<div id="hpbar"></div>
+<div id="portalbar"></div>
+<div id="score"></div>
+
+<div id="gameover"></div>
+<div id="intro" style="position: relative; display: inline-block; margin: 15px; left: -35px; top: -55px; width: 640px; height: 480px; background-color: rgba(40,40,40,0.75);"><br>
+        <span style="font-size: 32px;"><u><b>Disposition</u></b></span>
+        <br><br>How to play:
+        <br>- Walk around with WASD/Arrow keys
+        <br>- Aim with your mouse cursor
+        <br>- Click to shoot a portal
+        <br>- Kill robots
+        <br><br>Click anywhere to begin<br><br><br>
+
+        <br><br>A 13kb game by <a href="https://twitter.com/EthanShulman">Ethan Shulman</a> for the Js13k competition. </div>
+
+</div>
+
+</div>
+</body></html>
